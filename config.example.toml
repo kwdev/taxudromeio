@@ -1,0 +1,26 @@
+version = 1
+
+[[accounts]]
+id = "work"
+host = "imap.example.com"
+port = 993
+transport = "tls" # "starttls" uses port 143 by default when port is omitted
+root = "Projects"
+drafts_folder = "Drafts"
+auth_type = "password"
+
+[accounts.policy]
+profile = "triage"
+# Optional: intersect these operations with the profile. [] disables account tools.
+# allowed_operations = ["list_folders", "list_messages", "read_message", "set_flags"]
+
+[[accounts]]
+id = "project"
+host = "imap.example.com"
+port = 993
+transport = "tls"
+root = "Projects/Taxudromeio"
+auth_type = "password"
+
+[accounts.policy]
+profile = "read_only"
