@@ -7,8 +7,9 @@ Every mail operation selects a saved configuration ID. That configuration
 determines the server, root folder, permitted operations and Keychain record.
 
 This guide is printed by `taxudromeio skill`; it is available before setup.
-Read `taxudromeio --help` for a shorter overview and executable-specific MCP
-JSON, or `taxudromeio mail COMMAND --help` for exact command arguments.
+Read `taxudromeio --help` for a short command overview, or
+`taxudromeio mail COMMAND --help` for exact command arguments.
+This guide contains the detailed setup instructions and MCP client JSON.
 To save this guide for later:
 
 ```sh
@@ -342,8 +343,9 @@ taxudromeio remove archive
 
 ## Use MCP when the client benefits from structured tools
 
-Run `taxudromeio --help` for JSON using the current executable's absolute path.
-The MCP client launches `taxudromeio serve` and exchanges protocol messages over
+Find the installed executable with `command -v taxudromeio` in your shell and
+use its absolute path in the client's JSON. The MCP client launches
+`taxudromeio serve` and exchanges protocol messages over
 stdin/stdout. Do not run serve expecting an interactive mail shell.
 For example, replace this placeholder executable path with the installed path:
 

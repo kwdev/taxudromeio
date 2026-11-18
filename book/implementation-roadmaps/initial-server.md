@@ -473,3 +473,74 @@ rendering were rerun.
 Completed the detailed usage guide and installed the tested release executable
 on 2026-11-18. Live-provider and native Keychain acceptance remain part of
 milestone 1; no performance benchmark was added.
+
+## Milestone 8. Help is compact and points to the skill guide {#initial-server-8}
+
+**Outcome:** Command help provides a concise reference, while skill holds detailed setup, mail workflows and MCP JSON.
+
+**Status:** Complete
+
+**Identifier:** `initial-server-8`
+
+**Dependencies:** The CLI and standalone skill guide from milestones 5 and 7.
+
+**Design basis:** [Access](../design/access.md), [authentication](../design/authentication.md) and [requirements](../authority/requirements.md). Assigned by the user's 2026-11-18 request to shorten help given that skill exists.
+
+**Tasks**
+
+- [x] Remove long top-level and auth/serve/mail help appendices.
+- [x] Retain command lists, flags, defaults and brief operational notes.
+- [x] Direct help callers to skill and correct guide/documentation references.
+- [x] Verify compact help, command reference and guide examples/client JSON.
+- [x] Run development and Book checks and update the installed executable.
+
+### Completion criteria
+
+#### Help and guide {#initial-server-8-help-guide}
+
+Help is compact without losing command argument reference or discoverability of detailed setup.
+
+- **Anchor coverage:** `A-auth-setup-help` · `setup-instructions`, `client-json`, `command-details` — Full
+- **Anchor coverage:** `A-cli-agent-help` · `workflow-help`, `renamed-interface` — Full
+- **Anchor coverage:** `A-cli-skill` · `standalone-guide`, `guide-examples` — Full
+- **Evidence:** CLI subprocess tests check both help forms within a compact output budget, auth/serve/mail argument reference and all nine operation helps without settings or credentials. Skill tests retain every operation example and validate client JSON/serve arguments.
+
+#### Development checks {#initial-server-8-development-checks}
+
+Formatting, Clippy, tests, Book checks/rendering and installed help/skill output pass.
+
+- **Anchor coverage:** None — contributor tooling and packaging.
+- **Evidence:** All required checks passed. Installed -h and --help each produce 21 lines; the installed release matches the build and skill stdout matches the revised source.
+
+### Evidence {#initial-server-8-evidence}
+
+**Revision:** Working tree based on f60511c.
+
+**Checks:**
+
+- cargo fmt --check — passed.
+- cargo clippy --locked --all-targets -- -D warnings — passed.
+- cargo test --locked --all-targets — 58 tests passed.
+- cargo run --quiet --locked --example anchorbook -- check — passed.
+- mdbook build — passed.
+- git diff --check — passed.
+- cargo install --path . --locked --offline --force --root /Users/nikomat/.cargo — passed.
+- Installed release digest, compact help and skill output checked with nonexistent settings from an empty directory — passed.
+
+**Results:** Top-level help now has a command overview, flags, one authentication
+starting point and pointers to skill and command help. The long setup, workflow
+and JSON appendices were removed from help; nested commands retain argument
+reference and brief operational notes. The guide retains detailed setup and MCP
+JSON, with instructions to find the installed executable's absolute path.
+
+This requested refinement supersedes the expanded help
+layout recorded in milestones 3 and 5. Their evidence describes the historical
+implementation; detailed guidance and client JSON now belong to skill.
+No real mail or Keychain was accessed. The preexisting imap-proto
+future-compatibility warning remains. Only roadmap evidence/status changed after
+implementation checks; final Book checks and rendering were rerun.
+
+### Completion record
+
+Completed compact help and installed the tested release executable on
+2026-11-18. Authentication, policy and mail operation behavior are unchanged.

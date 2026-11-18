@@ -32,9 +32,9 @@
 > Statement: Renewable OAuth credentials remain in macOS Keychain and renew automatically so normal expiry does not require another auth run.
 > Source: The user's annotation requesting the previously omitted automatic OAuth refresh feature on 2026-11-17.
 
-> **`R-cli-setup-help`** (draft): **Explain setup in executable help**
-> Statement: The top-level --help explains authentication and MCP client setup, including a usable JSON configuration example.
-> Source: The user's 2026-11-17 request for setup instructions and typical client JSON in --help.
+> **`R-cli-setup-help`** (draft): **Make setup guidance discoverable from compact help**
+> Statement: Top-level help lists commands and a minimal authentication starting point, then directs users to skill for detailed setup and MCP client JSON. Command-specific help retains flags and defaults.
+> Source: The user's 2026-11-17 setup-help request, refined by the 2026-11-18 request to shorten help now that skill exists.
 
 > **`R-profile-setup`** (draft): **Configure mail using an Apple profile**
 > Statement: Auth can import IMAP setup from a user-selected mobileconfig file, including its login and incoming credential, while keeping scope and policy local and storing credentials in Keychain.
@@ -48,9 +48,9 @@
 > Statement: The Rust package and installed executable are named taxudromeio. Existing settings and Keychain records remain usable after the rename.
 > Source: The user's 2026-11-18 project rename request.
 
-> **`R-cli-agent-help`** (draft): **Teach agents the CLI workflow through help**
-> Statement: taxudromeio --help teaches an LLM to discover configurations, use scoped folders and UIDVALIDITY, read and paginate mail, and perform permitted mutations through arguments with JSON results.
-> Source: The user's 2026-11-18 request for help that teaches an LLM how to use the tool.
+> **`R-cli-agent-help`** (draft): **Keep command help concise and detailed guidance in skill**
+> Statement: taxudromeio help exposes command and argument reference information and points to skill for configuration discovery, scoped folders, UIDVALIDITY, pagination, mutations and JSON-result workflows.
+> Source: The user's 2026-11-18 agent-help request, refined by the subsequent request for shorter help given the skill guide.
 
 > **`R-cli-skill`** (draft): **Print detailed agent usage guidance**
 > Statement: taxudromeio skill prints a longer Markdown guide explaining CLI-first login, assistance with downloaded credential profiles and interactive setup, mail commands, multiple configurations and MCP tradeoffs. The guide is available without saved settings or credentials.

@@ -31,12 +31,12 @@ The configuration ID is the unit of identity, policy, scope, and credential stor
 > - Criterion `failure-safety` [test]: HTTPS endpoint validation, redirect refusal, bounded response parsing, redacted provider errors, and failed refresh or Keychain writes prevent returning new credentials.
 > - Criterion `legacy-records` [test]: Existing username-and-secret Keychain records deserialize without OAuth metadata.
 
-> **`A-auth-setup-help`** (draft): **Executable help guides local setup**
-> Property: Top-level --help gives installation, interactive authentication, Keychain storage, and MCP client configuration steps. Its JSON contains the current executable's absolute path and stdio serve arguments. Optional instructions explain selected configurations, custom settings files, STARTTLS and OAuth prerequisites. Short -h remains compact; auth and serve help explain their setup options.
-> Authority: `R-cli-setup-help`; `R-auth-command`
-> - Criterion `setup-instructions` [test]: The executable's --help exits successfully without configuration or Keychain access and includes auth, Keychain storage, and a configuration-discovery check.
-> - Criterion `client-json` [test]: JSON extracted from actual help parses, resolves to the running executable, includes serve arguments without credential environment settings, and successfully invokes serve help.
-> - Criterion `command-details` [test]: Short help directs users to --help without JSON, while auth and serve help cover OAuth grants, folder scope and selecting configuration IDs.
+> **`A-auth-setup-help`** (draft): **Compact help directs users to detailed local setup**
+> Property: Top-level --help and -h list commands, an authentication starting point and the skill guide without embedding the full workflow or client JSON. Auth and serve help retain their argument reference and brief interactive, Keychain and stdio notes. The skill guide supplies detailed setup and JSON with an explicitly replaceable absolute executable path.
+> Authority: `R-cli-setup-help`; `R-auth-command`; `R-cli-skill`
+> - Criterion `setup-instructions` [test]: Both help forms exit successfully with nonexistent settings, list commands and point to auth and skill within a compact output budget.
+> - Criterion `client-json` [test]: MCP client JSON extracted from actual skill output parses, uses an absolute placeholder path and valid serve arguments without credential environment settings; those arguments invoke serve help successfully on the test executable.
+> - Criterion `command-details` [test]: Auth and serve help retain setup flags, encryption/authentication choices, configuration selection and brief interactive or stdio notes while pointing to skill for details.
 
 > **`A-auth-profile-import`** (draft): **Profiles supply mail setup without widening access**
 > Property: Auth accepts a selected Apple mobileconfig as data and imports only IMAP connection settings, a login and incoming-mail password. Plain XML/binary plists and DER CMS SignedData with embedded plist data are supported without installing profiles or trusting their certificates or signatures. Imported credentials go through the existing verified login and Keychain persistence path; root, drafts folder and operation policy remain local choices.

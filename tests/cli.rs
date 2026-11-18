@@ -1,73 +1,28 @@
 use std::process::Command;
 
 /// anchorbook: A-auth-setup-help#setup-instructions
-/// anchorbook: A-auth-setup-help#client-json
-/// anchorbook: A-auth-setup-help#command-details
 #[test]
-fn installed_cli_help_provides_setup_and_usable_client_json() {
-    let output = Command::new(env!("CARGO_BIN_EXE_taxudromeio"))
-        .arg("--help")
-        .output()
-        .unwrap();
-    assert!(output.status.success());
-    assert!(output.stderr.is_empty());
-    let text = String::from_utf8(output.stdout).unwrap();
-    assert!(text.contains("auth"));
-    assert!(text.contains("serve"));
-    assert!(text.contains("configurations"));
-    assert!(text.contains("taxudromeio auth --id personal"));
-    assert!(text.contains("macOS Keychain"));
-    assert!(text.contains("mail_list_configurations"));
-
-    // Parse the JSON from actual help output, then execute its command/args.
-    // This catches invalid formatting and an unusable example executable path.
-    let start = text.find("\n{").expect("MCP client JSON in --help") + 1;
-    let end = start + text[start..].find("\n}").unwrap() + 2;
-    let client: serde_json::Value = serde_json::from_str(&text[start..end]).unwrap();
-    let server = &client["mcpServers"]["taxudromeio"];
-    let command = server["command"].as_str().unwrap();
-    assert!(std::path::Path::new(command).is_absolute());
-    assert_eq!(
-        std::fs::canonicalize(command).unwrap(),
-        std::fs::canonicalize(env!("CARGO_BIN_EXE_taxudromeio")).unwrap()
-    );
-    assert_eq!(server["args"], serde_json::json!(["serve"]));
-    assert!(server.get("env").is_none());
-    let args = server["args"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|arg| arg.as_str().unwrap())
-        .collect::<Vec<_>>();
-    let output = Command::new(command)
-        .args(args)
-        .arg("--help")
-        .output()
-        .unwrap();
-    assert!(output.status.success());
-    let serve_help = String::from_utf8(output.stdout).unwrap();
-    assert!(serve_help.contains("--configuration personal --configuration work"));
-    assert!(serve_help.contains("stdin/stdout"));
-
-    let output = Command::new(command).arg("-h").output().unwrap();
-    assert!(output.status.success());
-    let short_help = String::from_utf8(output.stdout).unwrap();
-    assert!(short_help.contains("Use --help for setup instructions"));
-    assert!(!short_help.contains("mcpServers"));
-    let output = Command::new(env!("CARGO_BIN_EXE_taxudromeio"))
-        .args(["auth", "--help"])
-        .output()
-        .unwrap();
-    assert!(output.status.success());
-    let text = String::from_utf8(output.stdout).unwrap();
-    assert!(text.contains("--drafts-folder"));
-    assert!(text.contains("--transport"));
-    assert!(text.contains("--mobileconfig"));
-    assert!(text.contains("--mail-account"));
-    assert!(text.contains("starttls"));
-    assert!(text.contains("provider-issued IMAP refresh token"));
-    assert!(text.contains("INBOX does not include sibling folders"));
-    assert!(text.contains("without changing mail"));
+fn top_level_help_is_compact_and_points_to_the_skill_guide() {
+    for option in ["-h", "--help"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_taxudromeio"))
+            .args(["--config", "/nonexistent/taxudromeio-settings", option])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        assert!(output.stderr.is_empty());
+        let text = String::from_utf8(output.stdout).unwrap();
+        for command in ["skill", "auth", "serve", "configurations", "mail", "remove"] {
+            assert!(text.contains(command), "{text}");
+        }
+        assert!(text.contains("Get started: taxudromeio auth"));
+        assert!(text.contains("taxudromeio skill"));
+        assert!(text.contains("taxudromeio <COMMAND> --help"));
+        // Keep a usable command overview rather than restoring the full guide.
+        assert!(text.lines().count() <= 35, "{text}");
+        assert!(text.len() <= 2_000, "{text}");
+        assert!(!text.contains("mcpServers"));
+        assert!(!text.contains("next_before_uid"));
+    }
 }
 
 #[test]
@@ -176,46 +131,71 @@ fn cli_refuses_disabled_operations_and_missing_ids_before_keychain() {
 
 /// anchorbook: A-cli-agent-help#workflow-help
 /// anchorbook: A-cli-agent-help#renamed-interface
+/// anchorbook: A-auth-setup-help#command-details
 #[test]
-fn agent_help_teaches_workflow_and_every_example_parses() {
-    use clap::Parser;
-    use taxudromeio::{cli::Cli, config};
+fn nested_help_preserves_command_arguments_and_brief_usage_notes() {
+    use taxudromeio::config;
 
-    let output = Command::new(env!("CARGO_BIN_EXE_taxudromeio"))
-        .args(["--config", "/nonexistent/taxudromeio-settings", "--help"])
-        .output()
-        .unwrap();
-    assert!(output.status.success());
-    assert!(output.stderr.is_empty());
-    let help = String::from_utf8(output.stdout).unwrap();
-    for phrase in [
-        "taxudromeio configurations",
-        "JSON value to stdout",
-        "--configuration ID",
-        "next_before_uid",
-        "UIDVALIDITY",
-        "Reads never mark mail read",
-        "untrusted data",
-        "inspect mail before",
-        "repeating creates another draft",
-        "--unread=false",
-        "exposes every saved configuration",
+    for (command, guidance) in [
+        (
+            "auth",
+            vec![
+                "--drafts-folder",
+                "--transport",
+                "--mobileconfig",
+                "--mail-account",
+                "--auth-type",
+                "--profile",
+                "starttls",
+                "oauth2",
+                "interactive terminal",
+                "macOS Keychain",
+            ],
+        ),
+        (
+            "serve",
+            vec![
+                "--configuration",
+                "omitted means all",
+                "stdin/stdout",
+                "Restart after configuration changes",
+            ],
+        ),
+        (
+            "mail",
+            vec![
+                "folders",
+                "status",
+                "list",
+                "search",
+                "read",
+                "move",
+                "copy",
+                "flags",
+                "draft",
+                "Commands return JSON",
+                "relative to the selected root",
+            ],
+        ),
     ] {
-        assert!(help.contains(phrase), "Missing guidance: {phrase}");
-    }
-    // These published examples deliberately use single-token argument values.
-    // Parse what the executable actually printed, not a duplicate list of examples.
-    let examples = help
-        .lines()
-        .map(str::trim)
-        .filter(|line| line.starts_with("taxudromeio mail "))
-        .collect::<Vec<_>>();
-    assert_eq!(examples.len(), 9);
-    for example in examples {
-        assert!(
-            Cli::try_parse_from(example.split_whitespace()).is_ok(),
-            "Unusable help example: {example}"
-        );
+        let output = Command::new(env!("CARGO_BIN_EXE_taxudromeio"))
+            .args([
+                "--config",
+                "/nonexistent/taxudromeio-settings",
+                command,
+                "--help",
+            ])
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        assert!(output.stderr.is_empty());
+        let help = String::from_utf8(output.stdout).unwrap();
+        assert!(help.contains("taxudromeio skill"), "{help}");
+        for phrase in guidance {
+            assert!(help.contains(phrase), "Missing {phrase} in {help}");
+        }
+        assert!(!help.contains("mcpServers"));
+        assert!(!help.contains("provider-issued IMAP refresh token"));
     }
     for command in [
         "folders", "status", "list", "search", "read", "move", "copy", "flags", "draft",

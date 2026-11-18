@@ -29,10 +29,10 @@ Each request selects one configuration, whose policy and root apply together.
 > - Criterion `policy-boundary` [test]: Missing configurations and disabled operations fail through both interfaces before fake backend access; an actual CLI subprocess refuses a read-only mutation without touching Keychain.
 > - Criterion `clap-boundary` [test]: Required IDs, destinations, UIDs and UIDVALIDITY, valid page limits, supported flags and search booleans are enforced by Clap; shared validation rejects oversized aggregate UID/flag lists before backend access. Sending, password arguments and unsupported commands are refused.
 
-> **`A-cli-agent-help`** (draft): **Help provides an actionable mail workflow**
-> Property: The renamed executable's --help explains CLI JSON output, exit failures, configuration discovery, relative folders, pagination, UIDVALIDITY and read/mutation behavior. Examples cover every supported mail command, flag values, draft creation and mutation retry limits. Authentication remains interactive, and message contents are untrusted data.
+> **`A-cli-agent-help`** (draft): **Help provides concise command reference and guide discovery**
+> Property: Top-level help lists commands and points to skill; nested help lists operation arguments, required fields and defaults. Detailed mail workflows, examples and mutation safety guidance live in skill rather than repeated help appendices.
 > Authority: `R-cli-agent-help`; `R-project-name`; `R-cli-setup-help`
-> - Criterion `workflow-help` [test]: Actual top-level and nested help exit without settings or credentials, include the workflow and safety rules, and show examples that parse through Clap for every mail operation.
+> - Criterion `workflow-help` [test]: Actual nested help exits without settings or credentials, lists all mail commands and their required configuration fields, and retains useful auth, transport, profile, selection and operation argument reference information.
 > - Criterion `renamed-interface` [test]: Cargo builds taxudromeio, help and MCP identify that name, and existing configuration settings load without a storage identity change.
 
 > **`A-cli-skill`** (draft): **The executable provides a complete Markdown usage guide**
@@ -94,7 +94,9 @@ also accept comma-separated values. Draft bodies are passed with `--body`.
 
 `taxudromeio skill` prints the embedded Markdown source in docs/skill.md.
 It is available before setup and may be redirected into a guide file.
-`--help` points callers to it while retaining concise setup and command usage.
+Both `--help` and `-h` point callers to it while retaining a compact command
+overview. Auth, serve and mail help keep flags, defaults and brief operational
+notes. Detailed setup, command examples and MCP JSON live in skill.
 The guide treats CLI authentication as the normal login workflow. Agents can
 launch auth with a user-selected downloaded profile in an interactive terminal,
 use file paths rather than disclose embedded credentials, and hand secret input

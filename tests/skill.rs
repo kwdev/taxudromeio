@@ -72,6 +72,7 @@ fn standalone_skill_prints_detailed_markdown_without_settings() {
 }
 
 /// anchorbook: A-cli-skill#guide-examples
+/// anchorbook: A-auth-setup-help#client-json
 #[test]
 fn published_shell_examples_parse_and_cover_every_mail_operation() {
     let guide = printed_guide();
@@ -80,11 +81,39 @@ fn published_shell_examples_parse_and_cover_every_mail_operation() {
     let mut draft_example = false;
     let mut examples = 0;
     let mut json_examples = 0;
+    let mut client_examples = 0;
     for block in guide.split("```").skip(1).step_by(2) {
         let (language, code) = block.split_once('\n').unwrap();
         if language == "json" {
             let value: Value = serde_json::from_str(code).unwrap();
             assert!(value.is_object());
+            if let Some(server) = value.get("mcpServers") {
+                client_examples += 1;
+                let server = &server["taxudromeio"];
+                assert!(std::path::Path::new(server["command"].as_str().unwrap()).is_absolute());
+                assert!(server.get("env").is_none());
+                let args = server["args"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|arg| arg.as_str().unwrap())
+                    .collect::<Vec<_>>();
+                assert_eq!(args, ["serve", "--configuration", "work"]);
+                // Replace the explicitly documented placeholder path with the built
+                // executable and check the client arguments without starting a server.
+                let output = Command::new(env!("CARGO_BIN_EXE_taxudromeio"))
+                    .args(args)
+                    .arg("--help")
+                    .output()
+                    .unwrap();
+                assert!(output.status.success());
+                assert!(output.stderr.is_empty());
+                assert!(
+                    String::from_utf8(output.stdout)
+                        .unwrap()
+                        .contains("--configuration")
+                );
+            }
             json_examples += 1;
             continue;
         }
@@ -132,4 +161,5 @@ fn published_shell_examples_parse_and_cover_every_mail_operation() {
     assert!(draft_example);
     assert!(examples >= 15);
     assert_eq!(json_examples, 2);
+    assert_eq!(client_examples, 1);
 }

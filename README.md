@@ -18,10 +18,9 @@ cargo install --path . --locked --force
 taxudromeio auth
 ```
 
-`taxudromeio --help` teaches users and agents the mail workflow, including setup,
-every CLI operation, JSON output, pagination, UIDVALIDITY and mutation handling.
-It also gives ready-to-copy MCP client JSON using the current executable's
-absolute path. `-h` is compact; nested `--help` lists command arguments.
+`taxudromeio --help` and `-h` give a compact command overview and point to
+`taxudromeio skill` for detailed setup, usage examples and MCP client JSON.
+Nested `--help` lists command arguments and defaults.
 
 `taxudromeio skill` prints the detailed [Markdown usage guide](docs/skill.md)
 without needing saved settings or credentials. It covers CLI-first login,
