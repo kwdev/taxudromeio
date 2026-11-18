@@ -1,4 +1,7 @@
-use std::{io::IsTerminal, path::Path};
+use std::{
+    io::IsTerminal,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result, ensure};
 use clap::{Args, ValueEnum};
@@ -9,6 +12,7 @@ use crate::{
     credentials::{CredentialStore, Credentials, OAuthRefresh},
     mail, oauth,
     policy::Profile,
+    profile,
 };
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -25,6 +29,12 @@ pub enum AccessProfile {
 
 #[derive(Args, Default)]
 pub struct AuthArgs {
+    /// Import IMAP settings and any mail credential from an Apple profile.
+    #[arg(long, value_name = "PATH")]
+    pub mobileconfig: Option<PathBuf>,
+    /// Choose an IMAP account within the profile (1-based; otherwise prompted).
+    #[arg(long, requires = "mobileconfig", value_name = "NUMBER")]
+    pub mail_account: Option<usize>,
     /// Stable, unique ID. Reusing an ID updates that configuration.
     #[arg(long)]
     pub id: Option<String>,
@@ -55,11 +65,62 @@ fn ask(label: &str, default: Option<&str>) -> Result<String> {
     Ok(prompt.interact_text()?)
 }
 
+fn profile_connection(
+    args: &AuthArgs,
+    imported: Option<&profile::ImportedAccount>,
+) -> Option<(String, Transport, u16)> {
+    let imported = imported?;
+    let transport = args.transport.unwrap_or(imported.transport);
+    let port = args.port.unwrap_or_else(|| {
+        if transport == imported.transport {
+            imported.port
+        } else {
+            transport.default_port()
+        }
+    });
+    Some((
+        args.host.as_ref().unwrap_or(&imported.host).clone(),
+        transport,
+        port,
+    ))
+}
+
 pub fn run(path: &Path, args: AuthArgs, store: &dyn CredentialStore) -> Result<()> {
     ensure!(
         std::io::stdin().is_terminal() && std::io::stderr().is_terminal(),
-        "Authentication requires an interactive terminal; run taxudromeio-mcp auth there"
+        "Authentication requires an interactive terminal; run taxudromeio auth there"
     );
+    let mut imported = match &args.mobileconfig {
+        None => None,
+        Some(path) => {
+            let accounts = profile::load(path)?;
+            let number = match args.mail_account {
+                Some(number) => number,
+                None if accounts.len() == 1 => 1,
+                None => {
+                    let choices = accounts
+                        .iter()
+                        .enumerate()
+                        .map(|(i, a)| {
+                            format!("Mail account {} ({}, port {})", i + 1, a.host, a.port)
+                        })
+                        .collect::<Vec<_>>();
+                    Select::new()
+                        .with_prompt("IMAP account to import")
+                        .items(&choices)
+                        .default(0)
+                        .interact()?
+                        + 1
+                }
+            };
+            let imported = profile::select(accounts, number)?;
+            eprintln!(
+                "Imported IMAP settings from the profile. Only mail settings are used; the profile is not installed."
+            );
+            Some(imported)
+        }
+    };
+    let connection = profile_connection(&args, imported.as_ref());
     let mut config = Config::load_for_auth(path)?;
     let id = match args.id {
         Some(id) => id,
@@ -74,10 +135,12 @@ pub fn run(path: &Path, args: AuthArgs, store: &dyn CredentialStore) -> Result<(
     );
     let host = match args.host {
         Some(host) => host,
+        None if connection.is_some() => connection.as_ref().unwrap().0.clone(),
         None => ask("IMAP host", previous.as_ref().map(|a| a.host.as_str()))?,
     };
     let transport = match args.transport {
         Some(transport) => transport,
+        None if connection.is_some() => connection.as_ref().unwrap().1,
         None => match Select::new()
             .with_prompt("IMAP encryption")
             .items(["Implicit TLS", "Required STARTTLS"])
@@ -94,6 +157,7 @@ pub fn run(path: &Path, args: AuthArgs, store: &dyn CredentialStore) -> Result<(
     };
     let port = match args.port {
         Some(port) => port,
+        None if connection.is_some() => connection.as_ref().unwrap().2,
         None => ask(
             "IMAP port",
             Some(
@@ -111,7 +175,13 @@ pub fn run(path: &Path, args: AuthArgs, store: &dyn CredentialStore) -> Result<(
         Some(root) => root,
         None => ask(
             "Root folder to expose",
-            Some(previous.as_ref().map_or("INBOX", |a| a.root.as_str())),
+            Some(
+                previous
+                    .as_ref()
+                    .map(|a| a.root.as_str())
+                    .or_else(|| imported.as_ref().and_then(|a| a.root_hint.as_deref()))
+                    .unwrap_or("INBOX"),
+            ),
         )?,
     };
     let drafts_folder = match args.drafts_folder {
@@ -146,6 +216,7 @@ pub fn run(path: &Path, args: AuthArgs, store: &dyn CredentialStore) -> Result<(
     let auth_type = match args.auth_type {
         Some(AuthMode::Password) => AuthType::Password,
         Some(AuthMode::Oauth2) => AuthType::Oauth2,
+        None if imported.is_some() => AuthType::Password,
         None => {
             let default = usize::from(
                 previous
@@ -163,14 +234,20 @@ pub fn run(path: &Path, args: AuthArgs, store: &dyn CredentialStore) -> Result<(
             }
         }
     };
-    let username = ask(
-        "IMAP login / email",
-        previous_credentials.as_ref().map(|c| c.username.as_str()),
-    )?;
+    let username = match imported.as_mut().and_then(|a| a.username.take()) {
+        Some(username) => username,
+        None => ask(
+            "IMAP login / email",
+            previous_credentials.as_ref().map(|c| c.username.as_str()),
+        )?,
+    };
     let mut credentials = match auth_type {
         AuthType::Password => Credentials {
             username,
-            secret: Password::new().with_prompt("App password").interact()?,
+            secret: match imported.as_mut().and_then(|a| a.password.take()) {
+                Some(password) => password,
+                None => Password::new().with_prompt("App password").interact()?,
+            },
             oauth: None,
         },
         AuthType::Oauth2 => {
@@ -377,6 +454,69 @@ mod tests {
             *self.0.lock().unwrap() = None;
             Ok(())
         }
+    }
+
+    /// anchorbook: A-auth-profile-import#local-boundaries
+    #[test]
+    fn explicit_connection_flags_override_profile_and_transport_changes_choose_a_port() {
+        let mut imported = profile::select(
+            profile::parse(include_bytes!("../tests/fixtures/mail-profile.der")).unwrap(),
+            1,
+        )
+        .unwrap();
+        imported.port = 1993;
+        let mut args = AuthArgs::default();
+        assert_eq!(profile_connection(&args, Some(&imported)).unwrap().2, 1993);
+        args.transport = Some(Transport::Starttls);
+        assert_eq!(profile_connection(&args, Some(&imported)).unwrap().2, 143);
+        args.host = Some("override.example.test".into());
+        args.port = Some(1143);
+        assert_eq!(
+            profile_connection(&args, Some(&imported)).unwrap(),
+            ("override.example.test".into(), Transport::Starttls, 1143)
+        );
+    }
+
+    /// anchorbook: A-auth-profile-import#local-boundaries
+    #[test]
+    fn imported_login_and_password_are_saved_only_to_the_credential_store() {
+        let mut imported = profile::select(
+            profile::parse(include_bytes!("../tests/fixtures/mail-profile.der")).unwrap(),
+            1,
+        )
+        .unwrap();
+        let credentials = Credentials {
+            username: imported.username.take().unwrap(),
+            secret: imported.password.take().unwrap(),
+            oauth: None,
+        };
+        let config = Config {
+            accounts: vec![Account {
+                id: "profile".into(),
+                host: imported.host.clone(),
+                port: imported.port,
+                transport: imported.transport,
+                root: "Projects".into(),
+                drafts_folder: Some("Drafts".into()),
+                auth_type: AuthType::Password,
+                policy: Default::default(),
+            }],
+            ..Default::default()
+        };
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml");
+        let store = MemoryStore(Mutex::new(None));
+        persist(&path, &config, "profile", &credentials, None, &store).unwrap();
+        let text = std::fs::read_to_string(path).unwrap();
+        assert!(!text.contains(&credentials.username));
+        assert!(!text.contains(&credentials.secret));
+        assert!(!text.contains("OutgoingPassword"));
+        let saved = store.0.lock().unwrap();
+        assert_eq!(saved.as_ref().unwrap().username, "fixture@example.test");
+        assert_eq!(saved.as_ref().unwrap().secret, "fixture-app-password");
+        assert_eq!(config.accounts[0].root, "Projects");
+        assert_eq!(config.accounts[0].drafts_folder.as_deref(), Some("Drafts"));
+        assert!(matches!(config.accounts[0].policy.profile, Profile::Triage));
     }
 
     /// anchorbook: A-auth-keychain#save-failure

@@ -11,10 +11,12 @@ use imap::{Session, types::Flag};
 use mailparse::MailHeaderMap;
 use native_tls::{TlsConnector, TlsStream};
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::mailbox_codec::{decode as decode_folder, encode as encode_folder};
+use crate::mailbox_codec::{
+    decode as decode_folder, encode as encode_folder, escape_quoted, quote as quote_folder,
+};
 use crate::{
     config::{Account, AuthType, Transport, safe_text},
     credentials::{CredentialStore, Credentials},
@@ -35,69 +37,128 @@ fn default_limit() -> usize {
     50
 }
 
-#[derive(Clone, Deserialize, JsonSchema)]
+fn parse_limit(value: &str) -> std::result::Result<usize, String> {
+    value
+        .parse::<usize>()
+        .ok()
+        .filter(|limit| (1..=100).contains(limit))
+        .ok_or_else(|| "limit must be between 1 and 100".into())
+}
+
+#[derive(Clone, Deserialize, Serialize, JsonSchema, clap::Args)]
 #[serde(deny_unknown_fields)]
 pub struct FolderArgs {
+    /// Saved configuration ID (see taxudromeio configurations).
+    #[arg(long)]
     pub configuration: String,
+    /// Folder relative to the configured root; "." is the root.
+    #[arg(long, default_value = ".")]
     #[serde(default = "root_folder")]
     pub folder: String,
 }
 
-#[derive(Clone, Deserialize, JsonSchema)]
+#[derive(Clone, Deserialize, Serialize, JsonSchema, clap::Args)]
 #[serde(deny_unknown_fields)]
 pub struct ListArgs {
+    /// Saved configuration ID.
+    #[arg(long)]
     pub configuration: String,
+    /// Folder relative to the configured root; "." is the root.
+    #[arg(long, default_value = ".")]
     #[serde(default = "root_folder")]
     pub folder: String,
+    /// Maximum messages per page (1–100).
+    #[arg(long, default_value_t = default_limit(), value_parser = parse_limit)]
     #[serde(default = "default_limit")]
     pub limit: usize,
     /// Return older messages than this UID, for pagination.
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
     pub before_uid: Option<u32>,
 }
 
-#[derive(Clone, Deserialize, JsonSchema)]
+#[derive(Clone, Deserialize, Serialize, JsonSchema, clap::Args)]
 #[serde(deny_unknown_fields)]
 pub struct SearchArgs {
+    /// Saved configuration ID.
+    #[arg(long)]
     pub configuration: String,
+    /// Folder relative to the configured root; "." is the root.
+    #[arg(long, default_value = ".")]
     #[serde(default = "root_folder")]
     pub folder: String,
+    /// Maximum messages per page (1–100).
+    #[arg(long, default_value_t = default_limit(), value_parser = parse_limit)]
     #[serde(default = "default_limit")]
     pub limit: usize,
+    /// Return older messages than this UID, for pagination.
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
     pub before_uid: Option<u32>,
+    /// Sender contains this text.
+    #[arg(long)]
     pub from: Option<String>,
+    /// Recipient contains this text.
+    #[arg(long)]
     pub to: Option<String>,
+    /// Subject contains this text.
+    #[arg(long)]
     pub subject: Option<String>,
+    /// Message contains this text.
+    #[arg(long)]
     pub text: Option<String>,
+    /// Match unread mail; use --unread=false for read mail.
+    #[arg(long, num_args = 0..=1, require_equals = true, default_missing_value = "true")]
     pub unread: Option<bool>,
+    /// Match flagged mail; use --flagged=false for unflagged mail.
+    #[arg(long, num_args = 0..=1, require_equals = true, default_missing_value = "true")]
     pub flagged: Option<bool>,
     /// Inclusive IMAP internal date, YYYY-MM-DD.
+    #[arg(long)]
     pub since: Option<String>,
     /// Exclusive IMAP internal date, YYYY-MM-DD.
+    #[arg(long)]
     pub before: Option<String>,
 }
 
-#[derive(Clone, Deserialize, JsonSchema)]
+#[derive(Clone, Deserialize, Serialize, JsonSchema, clap::Args)]
 #[serde(deny_unknown_fields)]
 pub struct ReadArgs {
+    /// Saved configuration ID.
+    #[arg(long)]
     pub configuration: String,
+    /// Folder relative to the configured root; "." is the root.
+    #[arg(long, default_value = ".")]
     #[serde(default = "root_folder")]
     pub folder: String,
+    /// Positive message UID from list/search, never a sequence number.
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
     pub uid: u32,
+    /// UIDVALIDITY from listing or status of this same folder.
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
     pub uid_validity: u32,
 }
 
-#[derive(Clone, Deserialize, JsonSchema)]
+#[derive(Clone, Deserialize, Serialize, JsonSchema, clap::Args)]
 #[serde(deny_unknown_fields)]
 pub struct TransferArgs {
+    /// Saved configuration ID.
+    #[arg(long)]
     pub configuration: String,
+    /// Source folder relative to the configured root; "." is the root.
+    #[arg(long, default_value = ".")]
     #[serde(default = "root_folder")]
     pub folder: String,
+    /// Destination folder relative to the same configured root.
+    #[arg(long)]
     pub destination: String,
+    /// 1–100 positive UIDs; comma-separated or space-separated.
+    #[arg(long, required = true, num_args = 1..=100, value_delimiter = ',', value_parser = clap::value_parser!(u32).range(1..))]
     pub uids: Vec<u32>,
+    /// UIDVALIDITY from listing or status of the source folder.
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
     pub uid_validity: u32,
 }
 
-#[derive(Clone, Copy, Deserialize, JsonSchema)]
+#[derive(Clone, Copy, Deserialize, Serialize, JsonSchema, clap::ValueEnum)]
 #[serde(rename_all = "snake_case")]
 pub enum TriageFlag {
     Seen,
@@ -117,41 +178,69 @@ impl TriageFlag {
     }
 }
 
-#[derive(Clone, Copy, Deserialize, JsonSchema)]
+#[derive(Clone, Copy, Deserialize, Serialize, JsonSchema, clap::ValueEnum)]
 #[serde(rename_all = "snake_case")]
 pub enum FlagAction {
     Add,
     Remove,
 }
 
-#[derive(Clone, Deserialize, JsonSchema)]
+#[derive(Clone, Deserialize, Serialize, JsonSchema, clap::Args)]
 #[serde(deny_unknown_fields)]
 pub struct FlagArgs {
+    /// Saved configuration ID.
+    #[arg(long)]
     pub configuration: String,
+    /// Folder relative to the configured root; "." is the root.
+    #[arg(long, default_value = ".")]
     #[serde(default = "root_folder")]
     pub folder: String,
+    /// 1–100 positive UIDs; comma-separated or space-separated.
+    #[arg(long, required = true, num_args = 1..=100, value_delimiter = ',', value_parser = clap::value_parser!(u32).range(1..))]
     pub uids: Vec<u32>,
+    /// UIDVALIDITY from listing or status of this same folder.
+    #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
     pub uid_validity: u32,
+    /// Add or remove the selected flags.
+    #[arg(long, value_enum)]
     pub action: FlagAction,
+    /// Flags to change; comma-separated, space-separated or repeated.
+    #[arg(long, required = true, num_args = 1..=4, value_delimiter = ',', value_enum)]
     pub flags: Vec<TriageFlag>,
 }
 
-#[derive(Clone, Deserialize, JsonSchema)]
+#[derive(Clone, Deserialize, Serialize, JsonSchema, clap::Args)]
 #[serde(deny_unknown_fields)]
 pub struct DraftArgs {
+    /// Saved configuration ID.
+    #[arg(long)]
     pub configuration: String,
     /// Optional relative destination. Otherwise use this configuration's drafts_folder.
+    #[arg(long)]
     pub folder: Option<String>,
     /// A bare email address; display names are not supported here.
+    #[arg(long)]
     pub from: String,
+    /// Recipient address; repeat for multiple recipients.
+    #[arg(long, action = clap::ArgAction::Append)]
     #[serde(default)]
     pub to: Vec<String>,
+    /// CC address; repeat for multiple recipients.
+    #[arg(long, action = clap::ArgAction::Append)]
     #[serde(default)]
     pub cc: Vec<String>,
+    /// BCC address; repeat for multiple recipients.
+    #[arg(long, action = clap::ArgAction::Append)]
     #[serde(default)]
     pub bcc: Vec<String>,
+    /// Draft subject (never sends mail).
+    #[arg(long)]
     pub subject: String,
+    /// UTF-8 draft body; quote spaces and shell metacharacters.
+    #[arg(long, allow_hyphen_values = true)]
     pub body: String,
+    /// Message-ID being replied to, including angle brackets; quote it for the shell.
+    #[arg(long)]
     pub in_reply_to: Option<String>,
 }
 
@@ -208,6 +297,45 @@ impl MailRequest {
             Self::Draft(_) => Operation::SaveDraft,
         }
     }
+
+    /// Validate request-wide limits before credentials or network access.
+    /// Clap's per-option token bounds do not bound delimiter-split or repeated lists.
+    pub fn validate(&self) -> Result<()> {
+        match self {
+            Self::Folders(_) | Self::Status(_) | Self::Draft(_) => {}
+            Self::List(args) => validate_page(args.limit, args.before_uid)?,
+            Self::Search(args) => validate_page(args.limit, args.before_uid)?,
+            Self::Read(args) => {
+                ensure!(args.uid > 0, "UIDs must be positive integers");
+                ensure!(args.uid_validity > 0, "UIDVALIDITY must be positive");
+            }
+            Self::Move(args) | Self::Copy(args) => {
+                uid_set(&args.uids)?;
+                ensure!(args.uid_validity > 0, "UIDVALIDITY must be positive");
+            }
+            Self::Flags(args) => {
+                uid_set(&args.uids)?;
+                ensure!(args.uid_validity > 0, "UIDVALIDITY must be positive");
+                ensure!(
+                    !args.flags.is_empty() && args.flags.len() <= 4,
+                    "Supply 1–4 supported flags"
+                );
+            }
+        }
+        Ok(())
+    }
+}
+
+fn validate_page(limit: usize, before_uid: Option<u32>) -> Result<()> {
+    ensure!(
+        (1..=100).contains(&limit),
+        "limit must be between 1 and 100"
+    );
+    ensure!(
+        before_uid.is_none_or(|uid| uid > 0),
+        "UIDs must be positive integers"
+    );
+    Ok(())
 }
 
 pub trait MailBackend: Send + Sync {
@@ -225,8 +353,6 @@ impl ImapBackend {
         }
     }
 }
-
-type ImapSession = Session<TlsStream<TcpStream>>;
 
 struct Connection<S: Read + Write> {
     session: Session<S>,
@@ -327,10 +453,12 @@ fn connect_with_connector(
     Ok(Connection { session, scope })
 }
 
-fn discover_scope(session: &mut ImapSession, root: &str) -> Result<FolderScope> {
+fn discover_scope<S: Read + Write>(session: &mut Session<S>, root: &str) -> Result<FolderScope> {
     let encoded = encode_folder(root);
+    // imap 2.4 quotes LIST's reference but interpolates its pattern verbatim.
+    let pattern = quote_folder(&encoded);
     let names = session
-        .list(Some(""), Some(&encoded))
+        .list(Some(""), Some(&pattern))
         .context("Could not discover root folder")?;
     let name = names
         .iter()
@@ -367,6 +495,7 @@ impl MailBackend for ImapBackend {
             request.configuration() == account.id,
             "Configuration mismatch"
         );
+        request.validate()?;
         let mut connection = authenticated(account, &self.credentials, |credentials| {
             connect(account, credentials)
         })?;
@@ -602,7 +731,8 @@ impl<S: Read + Write> Connection<S> {
                 let destination = self.scope.resolve(folder)?;
                 let message = build_draft(&args)?;
                 self.session.append_with_flags(
-                    encode_folder(&destination),
+                    // imap 2.4 adds APPEND quotes but does not escape their content.
+                    escape_quoted(&encode_folder(&destination)),
                     message,
                     &[Flag::Draft, Flag::Seen],
                 )?;
@@ -628,7 +758,9 @@ impl<S: Read + Write> Connection<S> {
             );
             self.session.uid_mv(set, encode_folder(&destination))?;
         } else {
-            self.session.uid_copy(set, encode_folder(&destination))?;
+            // Unlike UID MOVE, imap 2.4 interpolates UID COPY's destination verbatim.
+            self.session
+                .uid_copy(set, quote_folder(&encode_folder(&destination)))?;
         }
         // Source UIDs are not identifiers in the destination. Relist it before acting.
         Ok(json!({
@@ -828,13 +960,18 @@ mod tests {
         };
 
         /// anchorbook: A-auth-encrypted#upgrade-before-login
+        /// anchorbook: A-folder-confined#mailbox-quoting
         #[test]
         fn starttls_upgrades_before_login_and_has_no_second_greeting() {
-            for auth_type in [AuthType::Password, AuthType::Oauth2] {
+            for (auth_type, root) in [
+                (AuthType::Password, "INBOX/Sender: Work"),
+                (AuthType::Oauth2, "INBOX"),
+            ] {
                 let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
                 let mut account = fixture::account();
                 account.port = listener.local_addr().unwrap().port();
                 account.auth_type = auth_type;
+                account.root = root.into();
                 let oauth = matches!(account.auth_type, AuthType::Oauth2);
                 let acceptor = fixture::acceptor();
                 let server = thread::spawn(move || {
@@ -860,20 +997,26 @@ mod tests {
                         );
                     }
                     fixture::reply(&mut tls, "a1 OK Authenticated\r\n");
-                    assert_eq!(fixture::line(&mut tls), "a2 LIST \"\" INBOX\r\n");
-                    fixture::reply(&mut tls, "* LIST () \"/\" \"INBOX\"\r\na2 OK Listed\r\n");
+                    assert_eq!(
+                        fixture::line(&mut tls),
+                        format!("a2 LIST \"\" \"{root}\"\r\n")
+                    );
+                    fixture::reply(
+                        &mut tls,
+                        &format!("* LIST () \"/\" \"{root}\"\r\na2 OK Listed\r\n"),
+                    );
                     let mut extra = Vec::new();
                     let _ = tls.read_to_end(&mut extra);
                     assert!(extra.is_empty());
                 });
-                drop(
-                    connect_with_connector(
-                        &account,
-                        &fixture::credentials(),
-                        &fixture::connector(),
-                    )
-                    .unwrap(),
-                );
+                let connection = connect_with_connector(
+                    &account,
+                    &fixture::credentials(),
+                    &fixture::connector(),
+                )
+                .unwrap();
+                assert_eq!(connection.scope.root(), root);
+                drop(connection);
                 server.join().unwrap();
             }
         }
@@ -1162,6 +1305,48 @@ mod tests {
             )
         }
 
+        /// anchorbook: A-folder-confined#mailbox-quoting
+        /// anchorbook: A-folder-confined#wire-boundaries
+        #[test]
+        fn root_discovery_quotes_spaces_and_colons() {
+            for (root, encoded) in [
+                ("INBOX/Sender: Work", "INBOX/Sender: Work"),
+                (
+                    "INBOX/Sender: Entwürfe & Work",
+                    "INBOX/Sender: Entw&APw-rfe &- Work",
+                ),
+            ] {
+                let (mut connection, handle) = fixture(vec![
+                    (
+                        format!("LIST \"\" \"{encoded}\""),
+                        format!("* LIST () \"/\" \"{encoded}\"\r\n{{tag}} OK listed\r\n"),
+                    ),
+                    (format!("EXAMINE \"{encoded}\""), examine(7)),
+                ]);
+                let scope = discover_scope(&mut connection.session, root).unwrap();
+                assert_eq!(scope.root(), root);
+                assert_eq!(scope.delimiter(), Some('/'));
+                assert_eq!(scope.resolve("Done").unwrap(), format!("{root}/Done"));
+                assert!(scope.relative(&format!("{root}Other/Secret")).is_none());
+                connection.scope = scope;
+                let mut account = account();
+                account.root = root.into();
+                let status = connection
+                    .execute(
+                        &account,
+                        MailRequest::Status(FolderArgs {
+                            configuration: "work".into(),
+                            folder: ".".into(),
+                        }),
+                    )
+                    .unwrap();
+                assert_eq!(status["folder"], ".");
+                assert_eq!(status["uid_validity"], 7);
+                drop(connection);
+                handle.join().unwrap();
+            }
+        }
+
         /// anchorbook: A-folder-confined#wire-boundaries
         #[test]
         fn listed_siblings_are_filtered_and_invalid_destinations_send_no_commands() {
@@ -1300,7 +1485,7 @@ mod tests {
                     examine(7).replace("READ-ONLY", "READ-WRITE"),
                 ),
                 (
-                    "UID COPY 12 Projects/Done".into(),
+                    "UID COPY 12 \"Projects/Done\"".into(),
                     "{tag} OK copied\r\n".into(),
                 ),
             ];
@@ -1334,6 +1519,56 @@ mod tests {
             assert_eq!(result["moved"], false);
             drop(connection);
             handle.join().unwrap();
+        }
+
+        /// anchorbook: A-folder-confined#mailbox-quoting
+        /// anchorbook: A-message-stable#wire-safety
+        #[test]
+        fn moves_and_copies_quote_spaced_roots_and_escaped_destinations() {
+            let root = "INBOX/Sender: Work";
+            let destination = r#"Done: "Today"\Entwürfe"#;
+            for move_mail in [false, true] {
+                let mut script = vec![(
+                    "SELECT \"INBOX/Sender: Work\"".into(),
+                    examine(7).replace("READ-ONLY", "READ-WRITE"),
+                )];
+                if move_mail {
+                    script.push((
+                        "CAPABILITY".into(),
+                        "* CAPABILITY IMAP4rev1 MOVE UIDPLUS\r\n{tag} OK capabilities\r\n".into(),
+                    ));
+                    script.push((
+                        r#"UID MOVE 12 "INBOX/Sender: Work/Done: \"Today\"\\Entw&APw-rfe""#.into(),
+                        "{tag} OK moved\r\n".into(),
+                    ));
+                } else {
+                    script.push((
+                        r#"UID COPY 12 "INBOX/Sender: Work/Done: \"Today\"\\Entw&APw-rfe""#.into(),
+                        "{tag} OK copied\r\n".into(),
+                    ));
+                }
+                let (mut connection, handle) = fixture(script);
+                connection.scope = FolderScope::new(root.into(), Some('/')).unwrap();
+                let mut account = account();
+                account.root = root.into();
+                let args = TransferArgs {
+                    configuration: "work".into(),
+                    folder: ".".into(),
+                    destination: destination.into(),
+                    uids: vec![12],
+                    uid_validity: 7,
+                };
+                let request = if move_mail {
+                    MailRequest::Move(args)
+                } else {
+                    MailRequest::Copy(args)
+                };
+                let result = connection.execute(&account, request).unwrap();
+                assert_eq!(result["destination"], destination);
+                assert_eq!(result["moved"], move_mail);
+                drop(connection);
+                handle.join().unwrap();
+            }
         }
 
         /// anchorbook: A-folder-confined#wire-boundaries
@@ -1449,80 +1684,95 @@ mod tests {
         }
 
         /// anchorbook: A-policy-triage#draft-only
+        /// anchorbook: A-folder-confined#mailbox-quoting
         #[test]
         fn draft_append_uses_draft_flag_and_scoped_destination() {
-            let (client, server) = UnixStream::pair().unwrap();
-            client
-                .set_read_timeout(Some(Duration::from_secs(3)))
+            for (root, folder, wire_folder) in [
+                ("Projects", None, "Projects/Drafts"),
+                (
+                    "INBOX/Sender: Work",
+                    Some(r#"Drafts: "Today"\Entwürfe"#),
+                    r#"INBOX/Sender: Work/Drafts: \"Today\"\\Entw&APw-rfe"#,
+                ),
+            ] {
+                let (client, server) = UnixStream::pair().unwrap();
+                client
+                    .set_read_timeout(Some(Duration::from_secs(3)))
+                    .unwrap();
+                server
+                    .set_read_timeout(Some(Duration::from_secs(3)))
+                    .unwrap();
+                let handle = thread::spawn(move || {
+                    let mut writer = server.try_clone().unwrap();
+                    let mut reader = BufReader::new(server);
+                    writer.write_all(b"* OK ready\r\n").unwrap();
+                    let mut line = String::new();
+                    reader.read_line(&mut line).unwrap();
+                    let (tag, _) = line.trim_end().split_once(' ').unwrap();
+                    writer
+                        .write_all(format!("{tag} OK logged in\r\n").as_bytes())
+                        .unwrap();
+                    line.clear();
+                    reader.read_line(&mut line).unwrap();
+                    let (tag, command) = line.trim_end().split_once(' ').unwrap();
+                    let tag = tag.to_owned();
+                    assert!(
+                        command
+                            .starts_with(&format!("APPEND \"{wire_folder}\" (\\Draft \\Seen) {{")),
+                        "{command}"
+                    );
+                    let length: usize = command
+                        .rsplit_once('{')
+                        .unwrap()
+                        .1
+                        .trim_end_matches('}')
+                        .parse()
+                        .unwrap();
+                    writer.write_all(b"+ ready for literal\r\n").unwrap();
+                    let mut body = vec![0; length];
+                    reader.read_exact(&mut body).unwrap();
+                    let parsed = mailparse::parse_mail(&body).unwrap();
+                    assert_eq!(parsed.headers.get_first_value("Subject").unwrap(), "Draft");
+                    assert_eq!(parsed.get_body().unwrap(), "Hello");
+                    let mut crlf = [0; 2];
+                    reader.read_exact(&mut crlf).unwrap();
+                    assert_eq!(&crlf, b"\r\n");
+                    writer
+                        .write_all(format!("{tag} OK appended\r\n").as_bytes())
+                        .unwrap();
+                    line.clear();
+                    assert_eq!(
+                        reader.read_line(&mut line).unwrap(),
+                        0,
+                        "Unexpected command: {line}"
+                    );
+                });
+                let mut client = imap::Client::new(client);
+                client.read_greeting().unwrap();
+                let session = client
+                    .login("fixture", "fixture")
+                    .map_err(|(e, _)| e)
+                    .unwrap();
+                let mut connection = Connection {
+                    session,
+                    scope: FolderScope::new(root.into(), Some('/')).unwrap(),
+                };
+                let mut account = account();
+                account.root = root.into();
+                let draft = serde_json::from_value(json!({
+                    "configuration": "work", "folder": folder,
+                    "from": "me@example.com", "subject": "Draft", "body": "Hello"
+                }))
                 .unwrap();
-            server
-                .set_read_timeout(Some(Duration::from_secs(3)))
-                .unwrap();
-            let handle = thread::spawn(move || {
-                let mut writer = server.try_clone().unwrap();
-                let mut reader = BufReader::new(server);
-                writer.write_all(b"* OK ready\r\n").unwrap();
-                let mut line = String::new();
-                reader.read_line(&mut line).unwrap();
-                let (tag, _) = line.trim_end().split_once(' ').unwrap();
-                writer
-                    .write_all(format!("{tag} OK logged in\r\n").as_bytes())
-                    .unwrap();
-                line.clear();
-                reader.read_line(&mut line).unwrap();
-                let (tag, command) = line.trim_end().split_once(' ').unwrap();
-                let tag = tag.to_owned();
-                assert!(
-                    command.starts_with("APPEND \"Projects/Drafts\" (\\Draft \\Seen) {"),
-                    "{command}"
-                );
-                let length: usize = command
-                    .rsplit_once('{')
-                    .unwrap()
-                    .1
-                    .trim_end_matches('}')
-                    .parse()
-                    .unwrap();
-                writer.write_all(b"+ ready for literal\r\n").unwrap();
-                let mut body = vec![0; length];
-                reader.read_exact(&mut body).unwrap();
-                let parsed = mailparse::parse_mail(&body).unwrap();
-                assert_eq!(parsed.headers.get_first_value("Subject").unwrap(), "Draft");
-                assert_eq!(parsed.get_body().unwrap(), "Hello");
-                let mut crlf = [0; 2];
-                reader.read_exact(&mut crlf).unwrap();
-                assert_eq!(&crlf, b"\r\n");
-                writer
-                    .write_all(format!("{tag} OK appended\r\n").as_bytes())
-                    .unwrap();
-                line.clear();
                 assert_eq!(
-                    reader.read_line(&mut line).unwrap(),
-                    0,
-                    "Unexpected command: {line}"
+                    connection
+                        .execute(&account, MailRequest::Draft(draft))
+                        .unwrap()["sent"],
+                    false
                 );
-            });
-            let mut client = imap::Client::new(client);
-            client.read_greeting().unwrap();
-            let session = client
-                .login("fixture", "fixture")
-                .map_err(|(e, _)| e)
-                .unwrap();
-            let mut connection = Connection {
-                session,
-                scope: FolderScope::new("Projects".into(), Some('/')).unwrap(),
-            };
-            let draft = serde_json::from_value(json!({
-                "configuration": "work", "from": "me@example.com", "subject": "Draft", "body": "Hello"
-            })).unwrap();
-            assert_eq!(
-                connection
-                    .execute(&account(), MailRequest::Draft(draft))
-                    .unwrap()["sent"],
-                false
-            );
-            drop(connection);
-            handle.join().unwrap();
+                drop(connection);
+                handle.join().unwrap();
+            }
         }
     }
 }

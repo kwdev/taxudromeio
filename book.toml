@@ -1,6 +1,6 @@
 [book]
-title = "Taxudromeio MCP"
-description = "Design, access boundaries, and verification of the Rust IMAP MCP server."
+title = "Taxudromeio"
+description = "Design, access boundaries, and verification of the Rust IMAP CLI and MCP server."
 language = "en"
 src = "book"
 

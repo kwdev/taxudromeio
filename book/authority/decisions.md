@@ -1,7 +1,7 @@
 # Decisions
 
 > **`D-imap-only`** (draft): **Implement a local IMAP-only server**
-> Choice: Use stdio MCP and IMAP over verified implicit TLS or required STARTTLS, without SMTP or a sending operation. Save drafts using IMAP APPEND.
+> Choice: Use local stdio MCP and CLI interfaces to IMAP over verified implicit TLS or required STARTTLS, without SMTP or a sending operation. Save drafts using IMAP APPEND.
 > Requirements: `R-triage-default`; `R-rust-anchorbook`; `R-starttls`
 > Rationale: The requested triage workflow can be implemented entirely over IMAP, with no send path to accidentally expose.
 > Alternatives:
@@ -26,3 +26,12 @@
 > - Add provider-specific browser authorization and PKCE, which needs provider registration and consent behavior.
 > - Ask for a new access token on expiry, which fails the automatic refresh requirement.
 > Reconsider when: Browser authorization, additional client authentication schemes, or coordinated refresh across server processes becomes assigned work.
+
+> **`D-shared-mail-service`** (draft): **Use one mail service behind both interfaces**
+> Choice: Clap and MCP deserialize the same typed mail arguments. A shared service resolves the selected configuration, checks its policy, limits blocking workers and calls the same IMAP backend. Both interfaces use the same nonsecret configuration discovery and JSON operation results. Retain the existing settings directory and Keychain service identity across the executable rename.
+> Requirements: `R-cli-operations`; `R-root-scope`; `R-triage-default`; `R-project-name`
+> Rationale: Policy and protocol implementations shared by both adapters prevent a CLI-specific access path or lost credentials after renaming.
+> Alternatives:
+> - Duplicate operation implementations in the CLI, creating separate enforcement and verification obligations.
+> - Make the CLI spawn an MCP subprocess, adding a protocol round trip to each command.
+> Reconsider when: A remote service or persistent CLI session becomes assigned work.

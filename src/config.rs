@@ -162,7 +162,7 @@ impl Config {
     pub fn load(path: &Path) -> Result<Self> {
         let text = fs::read_to_string(path).with_context(|| {
             format!(
-                "Read {}; run taxudromeio-mcp auth to configure an account",
+                "Read {}; run taxudromeio auth to configure an account",
                 path.display()
             )
         })?;

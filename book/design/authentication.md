@@ -3,7 +3,7 @@
 The configuration ID is the unit of identity, policy, scope, and credential storage.
 
 > **`A-auth-keychain`** (draft): **Login information remains in macOS Keychain**
-> Property: The authentication command verifies new logins and roots before storing the login name and credential together in a Keychain item named by configuration ID. Renewal of an existing OAuth grant is preserved before verification to avoid losing rotated tokens. The TOML file and MCP discovery contain no login or credential; configuration-save failure attempts to restore the prior credential, including any renewal.
+> Property: The authentication command verifies new logins and roots before storing the login name and credential together in a Keychain item named by configuration ID. Renewal of an existing OAuth grant is preserved before verification to avoid losing rotated tokens. The TOML file and CLI/MCP discovery contain no login or credential; configuration-save failure attempts to restore the prior credential, including any renewal.
 > Authority: `R-keychain-login`; `R-auth-command`
 > - Criterion `no-file-secrets` [test]: TOML deserialization rejects username and password fields, and discovery and configuration-list outputs contain only nonsecret account settings.
 > - Criterion `save-failure` [test]: A fake store observes restoration of prior credentials or removal of a new record after a configuration write failure.
@@ -31,10 +31,28 @@ The configuration ID is the unit of identity, policy, scope, and credential stor
 > - Criterion `failure-safety` [test]: HTTPS endpoint validation, redirect refusal, bounded response parsing, redacted provider errors, and failed refresh or Keychain writes prevent returning new credentials.
 > - Criterion `legacy-records` [test]: Existing username-and-secret Keychain records deserialize without OAuth metadata.
 
+> **`A-auth-setup-help`** (draft): **Executable help guides local setup**
+> Property: Top-level --help gives installation, interactive authentication, Keychain storage, and MCP client configuration steps. Its JSON contains the current executable's absolute path and stdio serve arguments. Optional instructions explain selected configurations, custom settings files, STARTTLS and OAuth prerequisites. Short -h remains compact; auth and serve help explain their setup options.
+> Authority: `R-cli-setup-help`; `R-auth-command`
+> - Criterion `setup-instructions` [test]: The executable's --help exits successfully without configuration or Keychain access and includes auth, Keychain storage, and a configuration-discovery check.
+> - Criterion `client-json` [test]: JSON extracted from actual help parses, resolves to the running executable, includes serve arguments without credential environment settings, and successfully invokes serve help.
+> - Criterion `command-details` [test]: Short help directs users to --help without JSON, while auth and serve help cover OAuth grants, folder scope and selecting configuration IDs.
+
+> **`A-auth-profile-import`** (draft): **Profiles supply mail setup without widening access**
+> Property: Auth accepts a selected Apple mobileconfig as data and imports only IMAP connection settings, a login and incoming-mail password. Plain XML/binary plists and DER CMS SignedData with embedded plist data are supported without installing profiles or trusting their certificates or signatures. Imported credentials go through the existing verified login and Keychain persistence path; root, drafts folder and operation policy remain local choices.
+> Authority: `R-profile-setup`; `R-keychain-login`; `R-root-scope`; `R-triage-default`
+> - Criterion `profile-formats` [test]: XML, binary and a genuinely signed synthetic CMS fixture yield the expected IMAP settings and incoming password while unrelated payloads are ignored.
+> - Criterion `encrypted-connection` [test]: SSL uses implicit TLS, while port 143 or non-SSL profiles require STARTTLS, including custom ports; no plaintext mode is created.
+> - Criterion `account-selection` [test]: Multiple IMAP accounts sharing one server remain separate selections; out-of-range numbers fail, and CLI account selection requires a profile path.
+> - Criterion `local-boundaries` [test]: Missing credentials remain optional prompts, path prefixes are hints, explicit connection settings override imported defaults, and fake-store persistence keeps login and password out of TOML while retaining a chosen root, drafts folder and triage policy.
+> - Criterion `failure-safety` [test]: Invalid fields, malformed CMS/plist input, oversized files and directories are refused without echoing credential or parser values.
+
 The TOML file contains configuration version, ID, host, port, transport, root,
 drafts_folder, credential type and policy. macOS's configuration directory is
 `~/Library/Application Support/taxudromeio-mcp/config.toml`. A global `--config`
 option overrides it. New configurations default to triage and TLS port 993.
+The executable is named `taxudromeio`; the settings directory and Keychain
+service retain their established names to preserve saved logins across the rename.
 Required STARTTLS defaults to port 143. Repeated auth for an existing ID preserves policy and its allowlist unless an
 explicit profile flag changes the profile.
 
@@ -76,3 +94,13 @@ Keychain inside the configuration lock. Concurrent server/auth processes and
 separate IDs sharing a rotating grant are outside the lock's scope; use separate
 provider grants or external coordination. Non-macOS credential stores remain
 outside this design.
+
+`auth --mobileconfig PATH` reads at most 1 MiB and 128 payloads. Only
+`com.apple.mail.managed` entries with `EmailTypeIMAP` and `EmailAuthPassword`
+are imported. Login falls back to the profile's email address when its incoming
+username is missing; missing login/password values are prompted. The source
+profile is not rewritten, copied into the project, or referenced from TOML.
+File bytes and owned imported credentials are zeroized on drop; parsing
+libraries may make transient copies outside the application's control.
+Unrelated payload data and profile descriptions cannot grant permissions,
+configure other services, install trust anchors, or provide instructions.

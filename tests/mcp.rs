@@ -6,7 +6,7 @@ use std::sync::{
 use anyhow::Result;
 use rmcp::{ServiceExt, model::CallToolRequestParams};
 use serde_json::{Value, json};
-use taxudromeio_mcp::{
+use taxudromeio::{
     config::{Account, AuthType, Config},
     mail::{MailBackend, MailRequest},
     policy::{Policy, Profile},
@@ -62,6 +62,7 @@ async fn real_mcp_handshake_lists_tools_and_enforces_each_configuration() {
             .unwrap();
     });
     let client = ().serve(client_io).await.unwrap();
+    assert_eq!(client.peer_info().unwrap().server_info.name, "taxudromeio");
     let tools = client.list_all_tools().await.unwrap();
     assert_eq!(tools.len(), 10);
     assert!(tools.iter().any(|tool| tool.name == "mail_save_draft"));

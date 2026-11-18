@@ -32,6 +32,16 @@ pub(crate) fn encode(name: &str) -> String {
     result
 }
 
+/// Escape an already encoded mailbox name inside an IMAP quoted string.
+pub(crate) fn escape_quoted(name: &str) -> String {
+    name.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Serialize an already encoded mailbox name as one IMAP argument.
+pub(crate) fn quote(name: &str) -> String {
+    format!("\"{}\"", escape_quoted(name))
+}
+
 pub(crate) fn decode(name: &str) -> Result<String> {
     ensure!(
         name.is_ascii(),

@@ -71,7 +71,7 @@ pub fn refresh(credentials: &mut Credentials) -> Result<()> {
     let oauth = credentials
         .oauth
         .as_ref()
-        .context("OAuth token cannot be refreshed; run taxudromeio-mcp auth --auth-type oauth2")?;
+        .context("OAuth token cannot be refreshed; run taxudromeio auth --auth-type oauth2")?;
     validate(oauth)?;
     refresh_using(credentials, &client()?)
 }
@@ -98,7 +98,7 @@ fn refresh_using(credentials: &mut Credentials, http: &Client) -> Result<()> {
         })?;
     ensure!(
         response.status().is_success(),
-        "OAuth refresh rejected (HTTP {}); run taxudromeio-mcp auth if consent or the refresh token was revoked",
+        "OAuth refresh rejected (HTTP {}); run taxudromeio auth if consent or the refresh token was revoked",
         response.status().as_u16()
     );
     let mut bytes = Zeroizing::new(Vec::new());

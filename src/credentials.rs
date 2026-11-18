@@ -42,7 +42,7 @@ pub struct Keychain;
 impl CredentialStore for Keychain {
     fn load(&self, id: &str) -> Result<Credentials> {
         self.find(id)?.with_context(|| {
-            format!("No Keychain credential for '{id}'; run taxudromeio-mcp auth --id {id}")
+            format!("No Keychain credential for '{id}'; run taxudromeio auth --id {id}")
         })
     }
 

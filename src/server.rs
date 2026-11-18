@@ -11,7 +11,6 @@ use rmcp::{
 };
 use schemars::JsonSchema;
 use serde_json::{Value, json};
-use tokio::sync::Semaphore;
 
 use crate::{
     config::Config,
@@ -20,13 +19,12 @@ use crate::{
         TransferArgs,
     },
     policy::Operation,
+    service::MailService,
 };
 
 #[derive(Clone)]
 pub struct MailServer {
-    config: Arc<Config>,
-    backend: Arc<dyn MailBackend>,
-    permits: Arc<Semaphore>,
+    service: MailService,
 }
 
 fn schema<T: JsonSchema>() -> serde_json::Map<String, Value> {
@@ -92,16 +90,11 @@ fn operation_tool(operation: Operation) -> Tool {
 
 impl MailServer {
     pub fn new(config: Config, backend: Arc<dyn MailBackend>) -> Result<Self> {
-        config.validate()?;
-        ensure!(
-            !config.accounts.is_empty(),
-            "No configurations; run taxudromeio-mcp auth"
-        );
-        Ok(Self {
-            config: Arc::new(config),
-            backend,
-            permits: Arc::new(Semaphore::new(4)),
-        })
+        Ok(Self::from_service(MailService::new(config, backend)?))
+    }
+
+    pub fn from_service(service: MailService) -> Self {
+        Self { service }
     }
 
     pub fn tools(&self) -> Vec<Tool> {
@@ -120,16 +113,7 @@ impl MailServer {
                 .open_world(false),
         );
         let mut tools = vec![list];
-        for operation in Operation::ALL {
-            if self
-                .config
-                .accounts
-                .iter()
-                .any(|a| a.policy.allows(operation))
-            {
-                tools.push(operation_tool(operation));
-            }
-        }
+        tools.extend(self.service.operations().map(operation_tool));
         tools
     }
 
@@ -139,34 +123,18 @@ impl MailServer {
                 arguments.as_object().is_some_and(|o| o.is_empty()),
                 "This tool takes no arguments"
             );
-            return Ok(
-                json!({"configurations": self.config.accounts.iter().map(|a| json!({
-                "id": a.id, "host": a.host, "port": a.port, "transport": a.transport, "root": a.root, "drafts_folder": a.drafts_folder,
-                "operations": Operation::ALL.into_iter().filter(|op| a.policy.allows(*op)).map(Operation::tool_name).collect::<Vec<_>>(),
-            })).collect::<Vec<_>>()}),
-            );
+            return Ok(self.service.configurations());
         }
         let operation = Operation::from_tool(name)?;
         let request = MailRequest::parse(operation, arguments).context("Invalid tool arguments")?;
-        let account = self.config.account(request.configuration())?.clone();
-        // Enforce per-account permission before touching Keychain, a socket or the backend.
-        account.policy.require(operation)?;
-        let permit = self.permits.clone().acquire_owned().await?;
-        let backend = self.backend.clone();
-        tokio::task::spawn_blocking(move || {
-            // Keep the permit until blocking I/O ends, even if the caller cancels its request.
-            let _permit = permit;
-            backend.execute(&account, request)
-        })
-        .await
-        .context("IMAP worker failed")?
+        self.service.execute(request).await
     }
 }
 
 impl ServerHandler for MailServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build())
-            .with_server_info(Implementation::new("taxudromeio-mcp", env!("CARGO_PKG_VERSION")))
+            .with_server_info(Implementation::new("taxudromeio", env!("CARGO_PKG_VERSION")))
             .with_instructions(
                 "Use mail_list_configurations first. Every mail tool requires a configuration ID. \
                  Folder paths use the server hierarchy delimiter and are relative to the configured root; '.' is root. \
