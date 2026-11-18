@@ -38,6 +38,12 @@ The configuration ID is the unit of identity, policy, scope, and credential stor
 > - Criterion `client-json` [test]: MCP client JSON extracted from actual skill output parses, uses an absolute placeholder path and valid serve arguments without credential environment settings; those arguments invoke serve help successfully on the test executable.
 > - Criterion `command-details` [test]: Auth and serve help retain setup flags, encryption/authentication choices, configuration selection and brief interactive or stdio notes while pointing to skill for details.
 
+> **`A-mcp-client-json`** (draft): **Client JSON describes the actual executable and selected launch options**
+> Property: mcp --json writes only a pretty-printed mcpServers JSON object to stdout before settings or credential access. The taxudromeio entry uses the current executable's absolute path and serve arguments. Explicit settings paths become absolute and selected configuration IDs remain separate arguments. No secrets or environment overrides are included. Without --json, mcp enters the same startup branch as serve.
+> Authority: `R-mcp-client-json`; `R-cli-setup-help`; `R-keychain-login`
+> - Criterion `standalone-json` [test]: An actual mcp --json subprocess succeeds from an empty directory without accounts, emits parseable JSON without stderr output, names the running executable and produces arguments that invoke serve help.
+> - Criterion `launch-options` [test]: Custom nonexistent settings paths containing spaces, quotes and Unicode resolve against the launch directory and round-trip through JSON; repeated IDs remain separate arguments. Printing creates no settings file, while serve and mcp both reject unknown IDs when starting.
+
 > **`A-auth-profile-import`** (draft): **Profiles supply mail setup without widening access**
 > Property: Auth accepts a selected Apple mobileconfig as data and imports only IMAP connection settings, a login and incoming-mail password. Plain XML/binary plists and DER CMS SignedData with embedded plist data are supported without installing profiles or trusting their certificates or signatures. Imported credentials go through the existing verified login and Keychain persistence path; root, drafts folder and operation policy remain local choices.
 > Authority: `R-profile-setup`; `R-keychain-login`; `R-root-scope`; `R-triage-default`

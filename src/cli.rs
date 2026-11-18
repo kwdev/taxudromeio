@@ -1,6 +1,6 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use serde_json::Value;
 
@@ -17,7 +17,7 @@ use crate::{
     name = "taxudromeio",
     version,
     about = "Scoped IMAP mail triage through CLI commands or a local MCP server",
-    after_help = "Get started: taxudromeio auth\nDetailed setup, examples and MCP JSON: taxudromeio skill\nCommand arguments: taxudromeio <COMMAND> --help"
+    after_help = "Get started: taxudromeio auth\nDetailed setup and examples: taxudromeio skill\nMCP client JSON: taxudromeio mcp --json\nCommand arguments: taxudromeio <COMMAND> --help"
 )]
 pub struct Cli {
     /// Override the nonsecret configuration file (use the same path for auth and operations).
@@ -36,6 +36,18 @@ pub enum Command {
         after_help = "Run in an interactive terminal; login and credentials stay in macOS Keychain.\nDetailed setup: taxudromeio skill"
     )]
     Auth(AuthArgs),
+    /// Start the MCP server, or print client configuration with --json.
+    #[command(
+        after_help = "JSON uses this executable's absolute path and launches serve.\nPrinting JSON needs no saved accounts. Detailed setup: taxudromeio skill"
+    )]
+    Mcp {
+        /// Print MCP client JSON instead of starting the server.
+        #[arg(long)]
+        json: bool,
+        /// Expose only these IDs. Repeat to select several; omitted means all.
+        #[arg(long = "configuration")]
+        configurations: Vec<String>,
+    },
     /// Start the MCP server over stdio (also the default command).
     #[command(
         after_help = "Communicates over stdin/stdout. All configurations are exposed unless selected.\nRestart after configuration changes. MCP client setup: taxudromeio skill"
@@ -58,6 +70,38 @@ pub enum Command {
 }
 
 pub const SKILL: &str = include_str!("../docs/skill.md");
+
+/// Generate client launch settings without loading accounts or credentials.
+pub fn mcp_client_config(config: Option<&Path>, configurations: &[String]) -> Result<Value> {
+    let executable = std::env::current_exe().context("Could not locate this executable")?;
+    let command = executable
+        .to_str()
+        .context("Executable path cannot be represented in JSON as UTF-8")?;
+    let mut args = Vec::new();
+    if let Some(config) = config {
+        // Clients can launch from another directory, and the file need not exist yet.
+        let path = std::path::absolute(config).context("Could not resolve the settings path")?;
+        args.push("--config".to_owned());
+        args.push(
+            path.to_str()
+                .context("Settings path cannot be represented in JSON as UTF-8")?
+                .to_owned(),
+        );
+    }
+    args.push("serve".to_owned());
+    for id in configurations {
+        args.push("--configuration".to_owned());
+        args.push(id.clone());
+    }
+    Ok(serde_json::json!({
+        "mcpServers": {
+            "taxudromeio": {
+                "command": command,
+                "args": args
+            }
+        }
+    }))
+}
 
 #[derive(Subcommand)]
 pub enum MailCommand {

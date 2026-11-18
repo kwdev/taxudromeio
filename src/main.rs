@@ -16,16 +16,29 @@ use taxudromeio::{
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    // The guide is available before setup, including without a home/settings path.
-    if matches!(&cli.command, Some(Command::Skill)) {
-        print!("{}", cli::SKILL);
-        return Ok(());
+    // Guidance and client settings are available before account setup.
+    match &cli.command {
+        Some(Command::Skill) => {
+            print!("{}", cli::SKILL);
+            return Ok(());
+        }
+        Some(Command::Mcp {
+            json: true,
+            configurations,
+        }) => {
+            let client = cli::mcp_client_config(cli.config.as_deref(), configurations)?;
+            println!("{}", serde_json::to_string_pretty(&client)?);
+            return Ok(());
+        }
+        _ => {}
     }
     let path = cli.config.map(Ok).unwrap_or_else(config::default_path)?;
     match cli.command.unwrap_or(Command::Serve {
         configurations: vec![],
     }) {
-        Command::Skill => unreachable!("Skill was handled before configuration lookup"),
+        Command::Skill | Command::Mcp { json: true, .. } => {
+            unreachable!("Standalone output was handled before configuration lookup")
+        }
         Command::Auth(args) => {
             tokio::task::spawn_blocking(move || auth::run(&path, args, &Keychain))
                 .await
@@ -49,7 +62,11 @@ async fn main() -> Result<()> {
             auth::remove(&path, &id, &Keychain)?;
             eprintln!("Removed configuration '{id}' and its Keychain record.");
         }
-        Command::Serve { configurations } => {
+        Command::Serve { configurations }
+        | Command::Mcp {
+            json: false,
+            configurations,
+        } => {
             let mut config = Config::load(&path)?;
             for id in &configurations {
                 config.account(id)?;

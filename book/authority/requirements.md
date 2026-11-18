@@ -55,3 +55,7 @@
 > **`R-cli-skill`** (draft): **Print detailed agent usage guidance**
 > Statement: taxudromeio skill prints a longer Markdown guide explaining CLI-first login, assistance with downloaded credential profiles and interactive setup, mail commands, multiple configurations and MCP tradeoffs. The guide is available without saved settings or credentials.
 > Source: The user's 2026-11-18 request for a skill subcommand and MCP efficiency explanation.
+
+> **`R-mcp-client-json`** (draft): **Generate MCP client launch configuration**
+> Statement: taxudromeio mcp --json prints an mcpServers JSON entry using the executable's actual absolute path and server launch arguments without requiring authentication or saved accounts.
+> Source: The user's 2026-11-18 request for taxudromeio mcp --json to print standard MCP server configuration.

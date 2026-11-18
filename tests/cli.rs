@@ -11,11 +11,20 @@ fn top_level_help_is_compact_and_points_to_the_skill_guide() {
         assert!(output.status.success());
         assert!(output.stderr.is_empty());
         let text = String::from_utf8(output.stdout).unwrap();
-        for command in ["skill", "auth", "serve", "configurations", "mail", "remove"] {
+        for command in [
+            "skill",
+            "auth",
+            "mcp",
+            "serve",
+            "configurations",
+            "mail",
+            "remove",
+        ] {
             assert!(text.contains(command), "{text}");
         }
         assert!(text.contains("Get started: taxudromeio auth"));
         assert!(text.contains("taxudromeio skill"));
+        assert!(text.contains("taxudromeio mcp --json"));
         assert!(text.contains("taxudromeio <COMMAND> --help"));
         // Keep a usable command overview rather than restoring the full guide.
         assert!(text.lines().count() <= 35, "{text}");
@@ -23,6 +32,84 @@ fn top_level_help_is_compact_and_points_to_the_skill_guide() {
         assert!(!text.contains("mcpServers"));
         assert!(!text.contains("next_before_uid"));
     }
+}
+
+/// anchorbook: A-mcp-client-json#standalone-json
+/// anchorbook: A-mcp-client-json#launch-options
+#[test]
+fn mcp_json_prints_usable_launch_settings_before_account_setup() {
+    let directory = tempfile::tempdir().unwrap();
+    let executable = env!("CARGO_BIN_EXE_taxudromeio");
+    let settings = directory
+        .path()
+        .canonicalize()
+        .unwrap()
+        .join("settings with spaces/quoted \"é\".toml");
+    let cases = [
+        (vec!["mcp", "--json"], serde_json::json!(["serve"])),
+        (
+            vec![
+                "mcp",
+                "--json",
+                "--config",
+                "settings with spaces/quoted \"é\".toml",
+                "--configuration",
+                "work",
+                "--configuration",
+                "archive",
+            ],
+            serde_json::json!([
+                "--config",
+                settings.to_str().unwrap(),
+                "serve",
+                "--configuration",
+                "work",
+                "--configuration",
+                "archive"
+            ]),
+        ),
+    ];
+    for (args, expected) in cases {
+        let output = Command::new(executable)
+            .current_dir(directory.path())
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "{:?}", output.stderr);
+        assert!(output.stderr.is_empty());
+        let client: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(client.as_object().unwrap().len(), 1);
+        let server = &client["mcpServers"]["taxudromeio"];
+        assert_eq!(server.as_object().unwrap().len(), 2);
+        assert_eq!(server["args"], expected);
+        let command = server["command"].as_str().unwrap();
+        assert!(std::path::Path::new(command).is_absolute());
+        assert_eq!(
+            std::fs::canonicalize(command).unwrap(),
+            std::fs::canonicalize(executable).unwrap()
+        );
+        let args = server["args"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|arg| arg.as_str().unwrap())
+            .collect::<Vec<_>>();
+        // Use the actual exported launch command, without contacting mail or Keychain.
+        let output = Command::new(command)
+            .current_dir(directory.path())
+            .args(args)
+            .arg("--help")
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        assert!(output.stderr.is_empty());
+        assert!(
+            String::from_utf8(output.stdout)
+                .unwrap()
+                .contains("stdin/stdout")
+        );
+    }
+    assert!(!settings.exists());
 }
 
 #[test]
@@ -69,19 +156,21 @@ fn configuration_listing_does_not_need_keychain_and_missing_ids_fail() {
             .unwrap()
             .contains("username")
     );
-    let output = Command::new(env!("CARGO_BIN_EXE_taxudromeio"))
-        .arg("--config")
-        .arg(&path)
-        .args(["serve", "--configuration", "missing"])
-        .output()
-        .unwrap();
-    assert!(!output.status.success());
-    assert!(output.stdout.is_empty());
-    assert!(
-        String::from_utf8(output.stderr)
-            .unwrap()
-            .contains("Unknown configuration")
-    );
+    for command in ["serve", "mcp"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_taxudromeio"))
+            .arg("--config")
+            .arg(&path)
+            .args([command, "--configuration", "missing"])
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+        assert!(
+            String::from_utf8(output.stderr)
+                .unwrap()
+                .contains("Unknown configuration")
+        );
+    }
 }
 
 /// anchorbook: A-interface-shared#policy-boundary
@@ -159,6 +248,15 @@ fn nested_help_preserves_command_arguments_and_brief_usage_notes() {
                 "omitted means all",
                 "stdin/stdout",
                 "Restart after configuration changes",
+            ],
+        ),
+        (
+            "mcp",
+            vec![
+                "--json",
+                "--configuration",
+                "omitted means all",
+                "no saved accounts",
             ],
         ),
         (

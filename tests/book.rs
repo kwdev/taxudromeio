@@ -55,5 +55,5 @@ fn book_structure_records_and_roadmaps_conform_to_the_pinned_engine() {
                 .starts_with(root.join("book/implementation-roadmaps"))
         })
         .collect::<Vec<_>>();
-    assert_eq!(read_roadmaps(&roadmaps, &records).unwrap().len(), 8);
+    assert_eq!(read_roadmaps(&roadmaps, &records).unwrap().len(), 9);
 }

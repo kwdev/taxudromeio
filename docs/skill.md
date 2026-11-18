@@ -9,7 +9,8 @@ determines the server, root folder, permitted operations and Keychain record.
 This guide is printed by `taxudromeio skill`; it is available before setup.
 Read `taxudromeio --help` for a short command overview, or
 `taxudromeio mail COMMAND --help` for exact command arguments.
-This guide contains the detailed setup instructions and MCP client JSON.
+This guide contains detailed setup instructions and explains how to generate
+MCP client JSON with `taxudromeio mcp --json`.
 To save this guide for later:
 
 ```sh
@@ -343,11 +344,37 @@ taxudromeio remove archive
 
 ## Use MCP when the client benefits from structured tools
 
-Find the installed executable with `command -v taxudromeio` in your shell and
-use its absolute path in the client's JSON. The MCP client launches
-`taxudromeio serve` and exchanges protocol messages over
+Print client JSON using the current executable's absolute path:
+
+```sh
+taxudromeio mcp --json
+```
+
+The output has an `mcpServers` entry named `taxudromeio` whose command is this
+executable and whose arguments default to `["serve"]`. Merge that entry into
+the client's existing configuration. Printing JSON needs no saved accounts,
+Keychain access or mailbox connection.
+
+To expose only selected IDs, repeat `--configuration`:
+
+```sh
+taxudromeio mcp --json --configuration work --configuration archive
+```
+
+For custom settings, pass the same `--config` used during auth. The exporter
+resolves a relative path against the current directory so the client can launch
+elsewhere. The settings file and selected IDs are checked when the server starts,
+not when printing JSON:
+
+```sh
+taxudromeio --config /absolute/path/mail-settings.toml mcp --json \
+  --configuration work
+```
+
+The MCP client launches `taxudromeio serve` and exchanges protocol messages over
 stdin/stdout. Do not run serve expecting an interactive mail shell.
-For example, replace this placeholder executable path with the installed path:
+For illustration, a work-only entry looks like this; the exporter replaces the
+placeholder executable path automatically:
 
 ```json
 {
@@ -360,8 +387,9 @@ For example, replace this placeholder executable path with the installed path:
 }
 ```
 
-Plain serve, or invoking Taxudromeio with no subcommand, exposes every saved
-configuration. Repeat `--configuration` to select several IDs:
+Plain serve, mcp without --json, or invoking Taxudromeio with no subcommand
+starts the same server and exposes every saved configuration.
+Repeat `--configuration` to select several IDs:
 
 ```sh
 taxudromeio serve --configuration work --configuration archive
