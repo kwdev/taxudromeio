@@ -630,7 +630,7 @@ on 2026-11-18.
 
 **Outcome:** Contributors can install the locked Anchor Book revision, retrieve its configured contract, check and render the Book through the native CLI, and obtain current criterion evidence without maintaining copied engine dispatch.
 
-**Status:** In progress
+**Status:** Complete
 
 **Identifier:** `initial-server-10`
 
@@ -646,7 +646,7 @@ on 2026-11-18.
 - [x] Configure nextest evidence, separate discovery protection, and associate its existing output checks and configuration-subset checks.
 - [x] Replace the native-login review method with an explicit executable obligation, leaving its missing evidence visible.
 - [x] Make public TLS fixture packaging and platform-specific imports usable for Linux and macOS validation.
-- [ ] Validate the final change locally and through CI on both hosts.
+- [x] Validate the final change locally and through CI on both hosts.
 
 ### Completion criteria
 
@@ -678,4 +678,9 @@ Tests use synthetic credentials and loopback fixtures; no native Keychain or
 real-provider acceptance is inferred from these runs.
 
 - **Anchor coverage:** None — contributor setup and CI portability.
-- **Evidence:** Formatting, Clippy with warnings denied, 59 ordinary tests, installed-tool acceptance, Book build, and configured verification pass locally on Linux. OpenSSL development headers are a host prerequisite; no legacy provider override is needed after repackaging the existing public test identity. The preexisting imap-proto future-incompatibility warning remains. Linux/macOS CI is pending.
+- **Evidence:** Formatting, Clippy with warnings denied, 59 ordinary tests, installed-tool acceptance, Book build, and configured verification pass locally on Linux. OpenSSL development headers are a host prerequisite; no legacy provider override is needed after repackaging the existing public test identity. The preexisting imap-proto future-incompatibility warning remains. [Linux and macOS CI](https://github.com/kwdev/taxudromeio/actions/runs/45453005643) both passed for `88fb4c6431713264bb7fbf8bd3723868090c6e4c`, including the installed-tool gate regression. Both retained verification reports have the same 12 satisfied/one partial anchor and 38 satisfied/one unlinked criterion totals.
+
+### Completion record
+
+Complete for native Book tooling and deterministic verification. Native Keychain
+integration and real-provider acceptance remain outstanding in milestone 1.
